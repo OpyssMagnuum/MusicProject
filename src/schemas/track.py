@@ -1,12 +1,15 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class TrackBase(BaseModel):
+class TrackOnlyAlbum(BaseModel):
+    album_id: int | None = None
+
+
+class TrackBase(TrackOnlyAlbum):
     name: str
     length: int
     genre: str
     year: int
-    album_id: int | None = None
 
 
 class TrackCreate(TrackBase):

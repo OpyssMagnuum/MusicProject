@@ -1,12 +1,13 @@
 from http.client import HTTPException
 from typing import TypeVar
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.schemas.album import AlbumSchema
 from src.models.album import Album
-from src.schemas.track import TrackSchema
+from src.schemas.track import TrackSchema, TrackOnlyAlbum
 from src.models.track import Track
 from src.models.artist import Artist
 from src.schemas.artist import ArtistSchema
@@ -67,7 +68,8 @@ class AssociationRepository:  # (Generic[Ar, Br, S]):
     @classmethod
     async def add_association(cls, a_id: int, b_id: int) -> None:
         async with new_session() as session:
-            obj_1 = await session.get(cls.model_1, a_id)
+            obj_1 = await session.get(cls.model_1, a_id,
+                                      options=[selectinload(getattr(cls.model_1, cls.relation_name))])
             obj_2 = await session.get(cls.model_2, b_id)
 
             if not obj_1 or not obj_2:
@@ -81,7 +83,12 @@ class AssociationRepository:  # (Generic[Ar, Br, S]):
     @classmethod
     async def get_associations(cls, a_id: int) -> list[S]:
         async with new_session() as session:
-            obj_1 = await session.get(cls.model_1, a_id)
+            query = select(cls.model_1).where(cls.model_1.id == a_id).options(
+                selectinload(getattr(cls.model_1, cls.relation_name))
+            )
+            result = await session.execute(query)
+            obj_1 = result.scalar_one_or_none()
+
             if not obj_1:
                 raise HTTPException(404, "Object not found")
 
@@ -93,21 +100,41 @@ class TrackRepository(BaseRepository):
     model = Track
     schema = TrackSchema
 
+    @classmethod
+    async def update_track_album(cls, id: int, data: TrackOnlyAlbum) -> dict:
+        async with new_session() as session:
+            new_data = data.model_dump()
+
+            change = {'id': id, 'album_id': new_data.get('album_id')}
+            stmt = (
+                update(cls.model)
+                .where(cls.model.id == change.get('id'))
+                .values(album_id=change.get('album_id'))
+            )
+            await session.execute(stmt)
+            await session.commit()
+            return change
+
 
 class ArtistRepository(BaseRepository):
     schema = ArtistSchema
     model = Artist
 
 
+class AlbumRepository(BaseRepository):
+    schema = AlbumSchema
+    model = Album
+
+
 class TrackArtistRepository(AssociationRepository):
-    model_a = Track
-    model_b = Artist
-    schema_b = ArtistSchema
+    model_1 = Track
+    model_2 = Artist
+    schema = ArtistSchema
     relation_name = "artists"
 
 
 class ArtistTrackRepository(AssociationRepository):
-    model_a = Artist
-    model_b = Track
-    schema_b = TrackSchema
+    model_1 = Artist
+    model_2 = Track
+    schema = TrackSchema
     relation_name = "tracks"

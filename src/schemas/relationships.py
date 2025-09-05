@@ -3,7 +3,7 @@ from src.schemas.track import TrackSchema
 
 
 class TrackWithArtists(TrackSchema):
-    artists: list[ArtistSchema] = []
+    artists: list[ArtistSchema] | None = []
 
 
 class ArtistWithTracks(ArtistSchema):
